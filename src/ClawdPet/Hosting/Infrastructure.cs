@@ -1,0 +1,139 @@
+using System.IO;
+using System.IO.Pipes;
+using System.Text;
+using Microsoft.Win32;
+
+namespace ClawdPet.Hosting;
+
+static class Log
+{
+    static string? _file;
+    static readonly object Gate = new();
+
+    public static void Init(string file)
+    {
+        _file = file;
+        try { if (File.Exists(file) && new FileInfo(file).Length > 1_000_000) File.Delete(file); } catch { }
+    }
+
+    public static void Write(string message)
+    {
+        if (_file is null) return;
+        lock (Gate)
+        {
+            try { File.AppendAllText(_file, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}"); }
+            catch { }
+        }
+    }
+}
+
+/// <summary>
+/// One pet per data folder. Later launches hand their command line to the running pet over a
+/// named pipe (current user only) and exit — that is how <c>ClawdPet.exe work</c> drives it.
+/// </summary>
+sealed class SingleInstance : IDisposable
+{
+    readonly Mutex _mutex;
+    readonly string _pipeName;
+    readonly CancellationTokenSource _cts = new();
+
+    public SingleInstance(string key)
+    {
+        _mutex = new Mutex(true, $@"Local\ClawdPet-{key}", out bool created);
+        IsFirst = created;
+        _pipeName = $"ClawdPet-{key}";
+    }
+
+    public bool IsFirst { get; }
+
+    public string? Send(string command, int timeoutMs = 3000)
+    {
+        try
+        {
+            using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly);
+            pipe.Connect(timeoutMs);
+            using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
+            using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
+            writer.WriteLine(command);
+            return reader.ReadLine();
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"send '{command}' failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Serves one command line per connection; <paramref name="handle"/> runs on a background thread.</summary>
+    public void StartServer(Func<string, string> handle) => Task.Run(async () =>
+    {
+        while (!_cts.IsCancellationRequested)
+        {
+            try
+            {
+                await using var server = new NamedPipeServerStream(_pipeName, PipeDirection.InOut, 4,
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                await server.WaitForConnectionAsync(_cts.Token);
+                using var reader = new StreamReader(server, Encoding.UTF8, leaveOpen: true);
+                using var writer = new StreamWriter(server, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
+                var line = await reader.ReadLineAsync(_cts.Token);
+                string reply = string.IsNullOrWhiteSpace(line) ? "error: empty command" : handle(line);
+                await writer.WriteLineAsync(reply);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex) { Log.Write($"pipe: {ex.Message}"); }
+        }
+    });
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        if (IsFirst) { try { _mutex.ReleaseMutex(); } catch { } }
+        _mutex.Dispose();
+    }
+}
+
+/// <summary>Start-with-Windows via the per-user Run key.</summary>
+static class Autostart
+{
+    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string ValueName = "ClawdPet";
+
+    static string Command => $"\"{Environment.ProcessPath}\"";
+
+    public static bool IsEnabled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+        return key?.GetValue(ValueName) is string v && string.Equals(v, Command, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static void Set(bool enabled)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(RunKey);
+        if (enabled) key.SetValue(ValueName, Command);
+        else key.DeleteValue(ValueName, throwOnMissingValue: false);
+    }
+}
+
+/// <summary>Lets this windowed exe print command replies: to a redirected stdout, or the parent console.</summary>
+static class ConsoleOut
+{
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern IntPtr GetStdHandle(int handle);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern bool AttachConsole(int processId);
+
+    public static void WriteLine(string text)
+    {
+        try
+        {
+            IntPtr h = GetStdHandle(-11);
+            if ((h == IntPtr.Zero || h == new IntPtr(-1)) && !AttachConsole(-1)) return;
+            using var stdout = Console.OpenStandardOutput();
+            var bytes = new UTF8Encoding(false).GetBytes(text + Environment.NewLine);
+            stdout.Write(bytes, 0, bytes.Length);
+        }
+        catch { }
+    }
+}

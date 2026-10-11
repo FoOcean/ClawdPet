@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- Only for the tray NotifyIcon. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>ClawdPet</RootNamespace>
+    <AssemblyName>ClawdPet</AssemblyName>
+    <ApplicationIcon>Assets\clawd.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.1.0</Version>
+    <!-- WPF reads DPI awareness from app.manifest; the WinForms analyzer only applies to WinForms apps. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Kept beside the exe (never inside a single-file bundle): skins load from disk and can be swapped. -->
+    <Content Include="Assets\Skins\**\*" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="Assets\clawd.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClawdPet.Core\ClawdPet.Core.csproj" />
+  </ItemGroup>
+
+</Project>

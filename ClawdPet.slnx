@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ClawdPet.Core/ClawdPet.Core.csproj" />
+    <Project Path="src/ClawdPet/ClawdPet.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ClawdPet.Core.Tests/ClawdPet.Core.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SpriteGen/SpriteGen.csproj" />
+  </Folder>
+</Solution>
