@@ -78,7 +78,7 @@ sealed class SingleInstance : IDisposable
                 using var writer = new StreamWriter(server, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
                 var line = await reader.ReadLineAsync(_cts.Token);
                 string reply = string.IsNullOrWhiteSpace(line) ? "error: empty command" : handle(line);
-                await writer.WriteLineAsync(reply);
+                await writer.WriteLineAsync(reply.ReplaceLineEndings(" "));   // one line per reply
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex) { Log.Write($"pipe: {ex.Message}"); }
@@ -118,6 +118,8 @@ static class Autostart
 /// <summary>Lets this windowed exe print command replies: to a redirected stdout, or the parent console.</summary>
 static class ConsoleOut
 {
+    public static bool Quiet { get; set; }
+
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
     static extern IntPtr GetStdHandle(int handle);
 
@@ -126,6 +128,7 @@ static class ConsoleOut
 
     public static void WriteLine(string text)
     {
+        if (Quiet) return;
         try
         {
             IntPtr h = GetStdHandle(-11);

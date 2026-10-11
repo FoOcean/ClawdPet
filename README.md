@@ -30,7 +30,7 @@ dotnet run --project src/ClawdPet
 | --- | --- |
 | 单击 | 开心地跳一下（睡觉时点它会醒；敲代码时点它会收起电脑再跳） |
 | 拖动 | 拎起来，腿在空中晃；松手会按甩出的速度飞出去、撞墙反弹、落地压扁 |
-| 右键 / 托盘右键 | 动作、大小（1×–8×）、皮肤、自由活动、总在最前、开机启动、召回、隐藏、重新加载皮肤、退出 |
+| 右键 / 托盘右键 | 动作、大小（1×–8×）、皮肤、自由活动、总在最前、开机启动、Agent 接入、召回、隐藏、重新加载皮肤、退出 |
 | 托盘双击 | 召回到鼠标所在屏幕 |
 
 ## 命令行 / 遥控
@@ -45,21 +45,42 @@ ClawdPet.exe attention     # 头顶冒 "!"，然后挥手
 ClawdPet.exe sleep | wake | wave | happy | walk left | look
 ClawdPet.exe play typing 5 # 播放精灵图里任意动画标签（给秒数则循环）
 ClawdPet.exe status | summon | scale 4 | reload | quit
+ClawdPet.exe agent install   # 一键接入 Claude Code（见下）
 ```
 
 ### 接入 Claude Code
 
-在 Claude Code 的 `settings.json` 里加 hooks，Clawd 就会跟着 Claude 干活（路径换成你的）：
+**一键接入**：右键 Clawd（或托盘图标）→ **Agent 接入 → Claude Code**，确认后重新打开 Claude Code 会话即可。也可以用命令行：`ClawdPet.exe agent install`（`agent status` 查看、`agent uninstall` 移除）。
+
+| Claude Code 事件 | Clawd |
+| --- | --- |
+| 会话开始 `SessionStart` | 挥手 |
+| 发送消息 `UserPromptSubmit` | 掏出电脑敲代码 |
+| 回复完成 `Stop` | 收工，开心地跳一下 |
+| 需要你处理 `Notification` | 头顶冒 "!"，然后挥手 |
+
+它会修改 Claude Code 的用户配置 `~/.claude/settings.json`（设置了 `CLAUDE_CONFIG_DIR` 时用那个目录）：
+
+- 只增删命令里带 `ClawdPet.exe` 的 hook，你自己的 hooks 和其它设置原样保留；重复接入不会重复添加。
+- 每次修改前把原文件备份为 `settings.json.clawdpet-backup-<时间>`。
+- 移动了 ClawdPet 的位置后，菜单会显示"需要更新"，点一下就会改成新路径。
+- 配置文件里有注释时不会自动修改（重写会丢掉注释），请参照下面手动添加。
+- hook 命令带 `--quiet`：Claude Code 会把部分 hook 的输出加进对话，静默可以避免干扰。
+
+手动配置等价于：
 
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"C:/path/to/ClawdPet.exe\" work" }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "\"C:/path/to/ClawdPet.exe\" done" }] }],
-    "Notification":     [{ "hooks": [{ "type": "command", "command": "\"C:/path/to/ClawdPet.exe\" attention" }] }]
+    "SessionStart":     [{ "hooks": [{ "type": "command", "command": "\"C:/path/to/ClawdPet.exe\" --quiet wave", "timeout": 10 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"C:/path/to/ClawdPet.exe\" --quiet work", "timeout": 10 }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "\"C:/path/to/ClawdPet.exe\" --quiet done", "timeout": 10 }] }],
+    "Notification":     [{ "hooks": [{ "type": "command", "command": "\"C:/path/to/ClawdPet.exe\" --quiet attention", "timeout": 10 }] }]
   }
 }
 ```
+
+要接入其它 agent，参照 `src/ClawdPet.Core/Integrations/ClaudeCodeHooks.cs`（纯 JSON 变换，有单测）和 `src/ClawdPet/Hosting/ClaudeCodeIntegration.cs`（读写文件、备份）再写一个，并在 `PetMenu` 的"Agent 接入"里加一项。
 
 ## 结构
 

@@ -1,5 +1,6 @@
 using System.Windows.Controls;
 using ClawdPet.Core.Behaviors;
+using ClawdPet.Core.Integrations;
 using ClawdPet.Hosting;
 
 namespace ClawdPet;
@@ -48,6 +49,17 @@ static class PetMenu
             menu.Items.Add(Item("开机启动（测试实例不可用）", () => { }, false, enabled: false));
         else
             menu.Items.Add(Item("开机启动", () => app.SetAutostart(!Autostart.IsEnabled()), Autostart.IsEnabled()));
+
+        var agents = new MenuItem { Header = "Agent 接入" };
+        var claudeState = app.Claude.State();
+        agents.Items.Add(Item(claudeState switch
+        {
+            HookState.Installed => "Claude Code（已接入，点击移除）",
+            HookState.Outdated => "Claude Code（需要更新，点击重新接入）",
+            _ => "Claude Code（点击一键接入）",
+        }, app.ToggleClaudeCode, claudeState == HookState.Installed));
+        agents.Items.Add(Item("打开 Claude Code 配置位置", app.OpenClaudeSettings));
+        menu.Items.Add(agents);
 
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("召回到鼠标处", app.Summon));

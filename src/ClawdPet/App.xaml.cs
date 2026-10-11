@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using ClawdPet.Core.Sprites;
@@ -25,6 +26,7 @@ public partial class App : Application
     internal AppPaths Paths { get; private set; } = null!;
     internal PetSettings Settings { get; private set; } = null!;
     internal PetWindow Pet { get; private set; } = null!;
+    internal ClaudeCodeIntegration Claude { get; private set; } = null!;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -32,8 +34,11 @@ public partial class App : Application
         Paths = AppPaths.Resolve();
         Log.Init(Paths.LogFile);
 
-        bool resident = e.Args.FirstOrDefault() == RunFlag;
-        var argv = e.Args.SkipWhile(a => a is RunFlag or "--cmd" or "send").ToArray();
+        // --quiet: print nothing (Claude Code adds some hooks' stdout to the conversation).
+        ConsoleOut.Quiet = e.Args.Any(a => a is "--quiet" or "-q");
+        var args0 = e.Args.Where(a => a is not ("--quiet" or "-q")).ToArray();
+        bool resident = args0.FirstOrDefault() == RunFlag;
+        var argv = args0.SkipWhile(a => a is RunFlag or "--cmd" or "send").ToArray();
         string? command = argv.Length > 0 ? string.Join(' ', argv) : null;
 
         _instance = new SingleInstance(Paths.InstanceKey);
@@ -48,6 +53,7 @@ public partial class App : Application
         SessionEnding += (_, _) => Quit();
 
         Settings = PetSettings.Load(Paths.SettingsFile);
+        Claude = new ClaudeCodeIntegration(Paths);
         var atlas = LoadAtlas(Settings.Skin) ?? LoadAtlas("clawd");
         if (atlas is null)
         {
@@ -138,6 +144,8 @@ public partial class App : Application
             case "scale" when parts.Length > 1 && int.TryParse(parts[1], out int s):
                 SetScale(s);
                 return "ok";
+            case "agent":
+                return AgentCommand(parts.Skip(1).FirstOrDefault()?.ToLowerInvariant() ?? "status");
         }
         return Pet.Engine.Command(line);
     }
@@ -209,6 +217,50 @@ public partial class App : Application
     {
         if (Pet.IsVisible) Pet.Hide();
         else Pet.Show();
+    }
+
+    /// <summary><c>agent status | install | uninstall</c> — Claude Code hook-up without dialogs.</summary>
+    string AgentCommand(string action)
+    {
+        try
+        {
+            return action switch
+            {
+                "install" => Claude.Install(),
+                "uninstall" or "remove" => Claude.Uninstall(),
+                _ => $"claude-code={Claude.State()} settings={Claude.SettingsPath}",
+            };
+        }
+        catch (Exception ex) { return $"error: {ex.Message}"; }
+    }
+
+    /// <summary>Menu: confirm, then add or remove the Claude Code hooks.</summary>
+    internal void ToggleClaudeCode()
+    {
+        bool remove = Claude.State() == Core.Integrations.HookState.Installed;
+        string question = remove
+            ? $"从 Claude Code 配置中移除 ClawdPet 的 hooks？\n\n{Claude.SettingsPath}"
+            : $"在 Claude Code 配置中加入 ClawdPet 的 hooks？\n\n{Claude.SettingsPath}\n\n"
+              + "会话开始 → 挥手\n发送消息 → 掏出电脑敲代码\n回复完成 → 收工并开心地跳\n需要你处理 → 冒出 \"!\"\n\n"
+              + "已有配置会保留，修改前会自动备份。";
+        if (MessageBox.Show(question, "ClawdPet · Agent 接入", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+            return;
+        try
+        {
+            MessageBox.Show(remove ? Claude.Uninstall() : Claude.Install(), "ClawdPet · Agent 接入", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"claude code hook-up failed: {ex}");
+            MessageBox.Show($"没有修改配置：{ex.Message}", "ClawdPet · Agent 接入", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    internal void OpenClaudeSettings()
+    {
+        var path = Claude.SettingsPath;
+        if (File.Exists(path)) Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        else Process.Start(new ProcessStartInfo("explorer.exe", $"\"{Path.GetDirectoryName(path)}\"") { UseShellExecute = true });
     }
 
     internal void OpenDataFolder() => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{Paths.Home}\"") { UseShellExecute = true });
