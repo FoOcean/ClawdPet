@@ -63,7 +63,7 @@ public sealed class PetBrain
         if (!_ctx.Options.Autonomous) return "idle";
         var weighted = _ctx.Registry.All
             .Select(b => (b.Name, W: b.AutoWeight?.Invoke(_ctx) ?? 0))
-            .Where(x => x.W > 0)
+            .Where(x => x.W > 0 && !_ctx.Options.DisabledAutonomous.Contains(x.Name))
             .ToList();
         double total = weighted.Sum(x => x.W);
         if (total <= 0) return "idle";

@@ -11,10 +11,39 @@ sealed class PetSettings
     public string Skin { get; set; } = "clawd";
     public bool Topmost { get; set; } = true;
     public bool Autonomous { get; set; } = true;
+    /// <summary>Minutes without interaction before naps get likely; 0 = never nap on its own.</summary>
     public double SleepAfterMinutes { get; set; } = 3;
+    /// <summary>1 (calm) … 5 (restless).</summary>
+    public int Liveliness { get; set; } = 3;
+    /// <summary>Behaviors the pet should not pick on its own.</summary>
+    public List<string> DisabledBehaviors { get; set; } = [];
+    public bool HideInFullscreen { get; set; } = true;
+    /// <summary>Show/hide hotkey such as "Ctrl+Alt+C"; empty = none.</summary>
+    public string Hotkey { get; set; } = "Ctrl+Alt+Shift+C";
+    public ClaudeOptions Claude { get; set; } = new();
     /// <summary>Last anchor position in physical pixels.</summary>
     public double? X { get; set; }
     public double? Y { get; set; }
+
+    public double Calmness => Liveliness switch { 1 => 3.0, 2 => 1.8, 4 => 0.6, 5 => 0.35, _ => 1.0 };
+
+    /// <summary>Claude Code live progress and reactions.</summary>
+    public sealed class ClaudeOptions
+    {
+        /// <summary>When the progress bubble shows: minimized | background | always | never.</summary>
+        public string BubbleWhen { get; set; } = "minimized";
+        public bool HoverPeek { get; set; } = true;
+        public bool ShowPlan { get; set; } = true;
+        public bool ShowText { get; set; } = true;
+        public bool ShowStats { get; set; } = true;
+        public bool ShowOtherSessions { get; set; } = true;
+        public bool ReactTyping { get; set; } = true;
+        public bool ReactDone { get; set; } = true;
+        public bool ReactAttention { get; set; } = true;
+        public bool CompletionSound { get; set; }
+        /// <summary>Also follow sessions found in ~/.claude/projects (works without hooks).</summary>
+        public bool DiscoverSessions { get; set; } = true;
+    }
 
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 

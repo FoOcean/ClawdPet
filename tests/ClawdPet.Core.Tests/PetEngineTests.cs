@@ -216,6 +216,21 @@ public class PetEngineTests
     }
 
     [Fact]
+    public void Chained_then_args_run_in_order_and_end_back_at_work()
+    {
+        var pet = NewPet(autonomous: true);
+        var command = new BehaviorArgs { Source = BehaviorSource.Command };
+        pet.Brain.Request("work", command);
+        Run(pet, 1500);
+        pet.Brain.Request("surprised", command with { Then = "wave", ThenArgs = command with { Then = "work", ThenArgs = command } });
+        var seen = new List<string?>();
+        Run(pet, 4000, () => { if (seen.LastOrDefault() != Behavior(pet)) seen.Add(Behavior(pet)); });
+        Assert.Equal(["work", "surprised", "wave", "work"], seen.Where(b => b != null));
+        Run(pet, 30_000);
+        Assert.Equal("work", Behavior(pet));
+    }
+
+    [Fact]
     public void Commands_wait_while_the_pet_is_held()
     {
         var pet = NewPet();

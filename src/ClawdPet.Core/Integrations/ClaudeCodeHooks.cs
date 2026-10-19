@@ -18,14 +18,17 @@ public enum HookState
 /// </summary>
 public static class ClaudeCodeHooks
 {
-    /// <summary>Claude Code hook event → pet command.</summary>
-    public static readonly IReadOnlyList<(string Event, string Command)> Map =
+    /// <summary>
+    /// Events forwarded to the pet. Each runs <c>ClawdPet.exe --quiet hook</c>, which hands the hook's
+    /// stdin JSON (plus the window the session lives in) to the running pet; the pet decides how to
+    /// react and tails the transcript for live progress.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Events =
     [
-        ("SessionStart", "wave"),
-        ("UserPromptSubmit", "work"),
-        ("Stop", "done"),
-        ("Notification", "attention"),
+        "SessionStart", "UserPromptSubmit", "Notification", "PreCompact", "Stop", "StopFailure", "SessionEnd",
     ];
+
+    public const string PetCommand = "hook";
 
     const string Marker = "clawdpet.exe";
 
@@ -40,8 +43,9 @@ public static class ClaudeCodeHooks
     {
         var ours = OurCommands(settings).ToList();
         if (ours.Count == 0) return HookState.NotInstalled;
-        bool complete = Map.All(m => ours.Any(o => o.Event == m.Event && o.Command == CommandLine(exePath, m.Command)));
-        return complete && ours.Count == Map.Count ? HookState.Installed : HookState.Outdated;
+        string expected = CommandLine(exePath, PetCommand);
+        bool complete = Events.All(ev => ours.Any(o => o.Event == ev && o.Command == expected && o.Async));
+        return complete && ours.Count == Events.Count ? HookState.Installed : HookState.Outdated;
     }
 
     /// <summary>Removes any previous ClawdPet hooks, then adds the current set.</summary>
@@ -50,7 +54,7 @@ public static class ClaudeCodeHooks
         Uninstall(settings);
         if (settings["hooks"] is not JsonObject hooks)
             settings["hooks"] = hooks = new JsonObject();
-        foreach (var (ev, cmd) in Map)
+        foreach (var ev in Events)
         {
             if (hooks[ev] is not JsonArray groups)
                 hooks[ev] = groups = new JsonArray();
@@ -59,8 +63,10 @@ public static class ClaudeCodeHooks
                 ["hooks"] = new JsonArray(new JsonObject
                 {
                     ["type"] = "command",
-                    ["command"] = CommandLine(exePath, cmd),
-                    ["timeout"] = 10,
+                    ["command"] = CommandLine(exePath, PetCommand),
+                    // Runs in the background, so it never slows Claude down.
+                    ["async"] = true,
+                    ["timeout"] = 15,
                 }),
             });
         }
@@ -91,7 +97,7 @@ public static class ClaudeCodeHooks
         return changed;
     }
 
-    static IEnumerable<(string Event, string Command)> OurCommands(JsonObject settings)
+    static IEnumerable<(string Event, string Command, bool Async)> OurCommands(JsonObject settings)
     {
         if (settings["hooks"] is not JsonObject hooks) yield break;
         foreach (var (ev, node) in hooks)
@@ -99,7 +105,7 @@ public static class ClaudeCodeHooks
                 foreach (var group in groups)
                     if (group?["hooks"] is JsonArray inner)
                         foreach (var h in inner)
-                            if (IsOurs(h)) yield return (ev, h!["command"]!.GetValue<string>());
+                            if (IsOurs(h)) yield return (ev, h!["command"]!.GetValue<string>(), h["async"] is JsonValue a && a.TryGetValue<bool>(out bool b) && b);
     }
 
     static bool IsOurs(JsonNode? hook) =>

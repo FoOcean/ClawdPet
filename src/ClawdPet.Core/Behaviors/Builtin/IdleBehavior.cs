@@ -10,7 +10,7 @@ public sealed class IdleBehavior : PetBehavior
     protected override void OnEnter()
     {
         Play("idle");
-        _duration = Args.DurationMs ?? Rand(3000, 8000);
+        _duration = Args.DurationMs ?? Rand(3000, 8000) * Math.Clamp(Ctx.Options.Calmness, 0.25, 4);
         _nextBlink = Rand(1200, 4500);
     }
 

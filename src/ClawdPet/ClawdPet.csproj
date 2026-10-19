@@ -12,7 +12,7 @@
     <AssemblyName>ClawdPet</AssemblyName>
     <ApplicationIcon>Assets\clawd.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <!-- WPF reads DPI awareness from app.manifest; the WinForms analyzer only applies to WinForms apps. -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>

@@ -12,6 +12,10 @@ public sealed class PetOptions
     public bool Autonomous { get; set; } = true;
     /// <summary>After this long without interaction, napping becomes likely.</summary>
     public double SleepAfterMs { get; set; } = 3 * 60_000;
+    /// <summary>Behaviors never picked on its own (they still run when asked).</summary>
+    public HashSet<string> DisabledAutonomous { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>0.25 = restless … 1 = normal … 3 = calm; scales how long it idles between activities.</summary>
+    public double Calmness { get; set; } = 1.0;
 }
 
 /// <summary>Everything a behavior can see and touch.</summary>

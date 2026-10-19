@@ -46,11 +46,22 @@ sealed class SingleInstance : IDisposable
 
     public bool IsFirst { get; }
 
-    public string? Send(string command, int timeoutMs = 3000)
+    /// <summary>Whether a pet already runs for this data folder (without taking ownership).</summary>
+    public static bool IsRunning(string key)
     {
+        if (!Mutex.TryOpenExisting($@"Local\ClawdPet-{key}", out var m)) return false;
+        m.Dispose();
+        return true;
+    }
+
+    public string? Send(string command, int timeoutMs = 3000) => Send(_pipeName, command, timeoutMs, raw: true);
+
+    public static string? Send(string key, string command, int timeoutMs = 3000, bool raw = false)
+    {
+        string pipeName = raw ? key : $"ClawdPet-{key}";
         try
         {
-            using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly);
+            using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly);
             pipe.Connect(timeoutMs);
             using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
             using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
@@ -59,31 +70,52 @@ sealed class SingleInstance : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Write($"send '{command}' failed: {ex.Message}");
+            Log.Write($"send '{(command.Length > 60 ? command[..60] + "…" : command)}' failed: {ex.Message}");
             return null;
         }
     }
 
-    /// <summary>Serves one command line per connection; <paramref name="handle"/> runs on a background thread.</summary>
+    /// <summary>
+    /// Serves one command line per connection. Each connection is handled on its own task so
+    /// several hooks firing at once don't queue behind each other; <paramref name="handle"/> runs
+    /// on a background thread.
+    /// </summary>
     public void StartServer(Func<string, string> handle) => Task.Run(async () =>
     {
         while (!_cts.IsCancellationRequested)
         {
+            NamedPipeServerStream? server = null;
             try
             {
-                await using var server = new NamedPipeServerStream(_pipeName, PipeDirection.InOut, 4,
+                server = new NamedPipeServerStream(_pipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 await server.WaitForConnectionAsync(_cts.Token);
+                var connected = server;
+                server = null;
+                _ = Task.Run(() => Serve(connected, handle));
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex) { Log.Write($"pipe: {ex.Message}"); await Task.Delay(200); }
+            finally { server?.Dispose(); }
+        }
+    });
+
+    async Task Serve(NamedPipeServerStream server, Func<string, string> handle)
+    {
+        await using (server)
+        {
+            try
+            {
                 using var reader = new StreamReader(server, Encoding.UTF8, leaveOpen: true);
                 using var writer = new StreamWriter(server, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
                 var line = await reader.ReadLineAsync(_cts.Token);
                 string reply = string.IsNullOrWhiteSpace(line) ? "error: empty command" : handle(line);
                 await writer.WriteLineAsync(reply.ReplaceLineEndings(" "));   // one line per reply
             }
-            catch (OperationCanceledException) { break; }
-            catch (Exception ex) { Log.Write($"pipe: {ex.Message}"); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { Log.Write($"pipe client: {ex.Message}"); }
+            catch (OperationCanceledException) { }
         }
-    });
+    }
 
     public void Dispose()
     {

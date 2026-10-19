@@ -13,6 +13,8 @@ static class PetMenu
         var engine = app.Pet.Engine;
         var user = new BehaviorArgs { Source = BehaviorSource.User };
         var menu = new ContextMenu();
+        menu.Items.Add(Item("设置…", () => app.OpenSettings()));
+        menu.Items.Add(new Separator());
 
         var actions = new MenuItem { Header = "动作" };
         foreach (var b in engine.Context.Registry.All.Where(b => b.MenuLabel != null))

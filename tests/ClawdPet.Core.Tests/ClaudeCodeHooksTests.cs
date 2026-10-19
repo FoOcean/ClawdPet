@@ -30,9 +30,22 @@ public class ClaudeCodeHooksTests
         var stop = s["hooks"]!["Stop"]!.AsArray();
         Assert.Equal(2, stop.Count);
         Assert.Equal("notify-send done", stop[0]!["hooks"]![0]!["command"]!.GetValue<string>());
-        Assert.Equal("\"C:/Apps/ClawdPet/ClawdPet.exe\" --quiet done", stop[1]!["hooks"]![0]!["command"]!.GetValue<string>());
-        Assert.Equal("\"C:/Apps/ClawdPet/ClawdPet.exe\" --quiet work",
-            s["hooks"]!["UserPromptSubmit"]![0]!["hooks"]![0]!["command"]!.GetValue<string>());
+        var ours = stop[1]!["hooks"]![0]!;
+        Assert.Equal("\"C:/Apps/ClawdPet/ClawdPet.exe\" --quiet hook", ours["command"]!.GetValue<string>());
+        Assert.True(ours["async"]!.GetValue<bool>());
+        Assert.All(ClaudeCodeHooks.Events, ev => Assert.NotNull(s["hooks"]![ev]));
+    }
+
+    [Fact]
+    public void Hooks_from_the_previous_version_count_as_outdated()
+    {
+        var s = JsonNode.Parse("""
+            { "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "\"C:/Apps/ClawdPet/ClawdPet.exe\" --quiet done", "timeout": 10 } ] } ] } }
+            """)!.AsObject();
+        Assert.Equal(HookState.Outdated, ClaudeCodeHooks.Inspect(s, Exe));
+        ClaudeCodeHooks.Install(s, Exe);
+        Assert.Equal(HookState.Installed, ClaudeCodeHooks.Inspect(s, Exe));
+        Assert.DoesNotContain("--quiet done", s.ToJsonString());
     }
 
     [Fact]

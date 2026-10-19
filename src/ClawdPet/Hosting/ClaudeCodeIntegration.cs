@@ -49,7 +49,7 @@ sealed class ClaudeCodeIntegration(AppPaths paths)
         var settings = Read();
         ClaudeCodeHooks.Install(settings, ExePath);
         string? backup = Write(settings);
-        return $"已接入 Claude Code（{ClaudeCodeHooks.Map.Count} 个 hooks）：{SettingsPath}"
+        return $"已接入 Claude Code（{ClaudeCodeHooks.Events.Count} 个 hooks）：{SettingsPath}"
             + (backup != null ? $"\n原文件已备份为 {Path.GetFileName(backup)}" : "")
             + "\n重新打开 Claude Code 会话后生效。";
     }
